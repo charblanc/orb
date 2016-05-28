@@ -16,8 +16,16 @@ errors = lazy_import('orb.errors')
 
 class Database(object):
     """ Contains all the database connectivity information. """
-    def __init__(self, connectionType, code='', username='', password='',
-                 host=None, port=None, name=None, timeout=20000, credentials=None):
+    def __init__(self,
+                 connectionType,
+                 code='',
+                 username='',
+                 password='',
+                 host=None,
+                 port=None,
+                 name=None,
+                 config=None,
+                 timeout=20000):
 
         # define custom properties
         conn = orb.Connection.byName(connectionType)
@@ -32,7 +40,7 @@ class Database(object):
         self.__port = port
         self.__username = username
         self.__password = password
-        self.__credentials = credentials
+        self.__config = config or {}
         self.__timeout = timeout  # ms
 
     def __del__(self):
@@ -99,15 +107,15 @@ class Database(object):
         """
         self.__connection.cleanup()
 
-    def credentials(self):
+    def config(self):
         """
-        Returns the credentials for this database.  If not explicitly set,
-        this will be a combination of the username, password and application
-        token.
-        
-        :return     <tuple>
+        Returns additional configuration options for a particular database.  Sometimes, the backends
+        will not use the same general properties, or will require specific configuration settings.
+        This dictionary will contain backend-specific configuarion values.
+
+        :return: <dict>
         """
-        return self.__credentials or (self.username(), self.password())
+        return self.__config
 
     def disconnect(self):
         """
@@ -177,6 +185,16 @@ class Database(object):
         """
         return self.__port
 
+    def setConfig(self, config):
+        """
+        Sets additional configuration options for a particular database.  Sometimes, the backends
+        will not use the same general properties, or will require specific configuration settings.
+        This dictionary will contain backend-specific configuarion values.
+
+        :param config: <dict>
+        """
+        self.__config = config
+
     def setName(self, name):
         """
         Sets the database name that will be used at the lower level to manage \
@@ -185,15 +203,6 @@ class Database(object):
         :param      name | <str>
         """
         self.__name = name
-
-    def setCredentials(self, credentials):
-        """
-        Sets the credentials for this database to the inputted argument
-        list.  This is most often used with the REST based backends.
-        
-        :param      credentials | <tuple> || None
-        """
-        self.__credentials = credentials
 
     def setDefault(self, state):
         """

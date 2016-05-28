@@ -1,0 +1,6 @@
+-r requirements-test.txt
+
+# different backend library requirements
+PyMySQL         # MySQL backend
+psycopg2        # Postgres backend
+pymssql         # MS SQL backend
