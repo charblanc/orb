@@ -12,12 +12,10 @@ class INSERT(MSSQLStatement):
             records = records.records()
 
         data = {}
-        default_namespace = orb.Context().db.name()
         schema_meta = {}
         schema_records = defaultdict(lambda: defaultdict(list))
         for i, record in enumerate(records):
             schema = record.schema()
-            id_column = schema.idColumn()
 
             # define the
             if not schema in schema_meta:
@@ -26,9 +24,10 @@ class INSERT(MSSQLStatement):
                 for col in schema.columns().values():
                     if col.testFlag(col.Flags.Virtual):
                         continue
+
                     if col.testFlag(col.Flags.I18n):
                         i18n.append(col)
-                    else:
+                    elif not col.testFlag(col.Flags.AutoAssign):
                         standard.append(col)
 
                 schema_meta[schema] = {'i18n': i18n, 'standard': standard}
@@ -37,77 +36,37 @@ class INSERT(MSSQLStatement):
                 schema_meta[schema] = {'i18n': [], 'standard': []}
 
             for key, columns in schema_meta[schema].items():
-                record_values = {}
-                for col in columns:
-                    value = col.dbStore('MSSQL', record.get(col))
-                    if col == id_column and not id_column.testFlag(id_column.Flags.AutoAssign) and record.id() is None:
-                        record.set(col, value)
-                    record_values['{0}_{1}'.format(col.field(), i)] = value
-
-                data.update(record_values)
-
-                insert_values = []
-                for col in columns:
-                    value_key = '{0}_{1}'.format(col.field(), i)
-                    if record_values[value_key] == 'DEFAULT':
-                        insert_values.append('DEFAULT')
-                    else:
-                        insert_values.append('%({0})s'.format(value_key))
-
-                schema_records[schema][key].append(','.join(insert_values))
+                data.update({'{0}_{1}'.format(col.field(), i): col.dbStore('MSSQL', record.get(col)) for col in columns})
+                values = ','.join(['%({0}_{1})s'.format(col.field(), i) for col in columns])
+                schema_records[schema][key].append(values)
 
         cmd = []
         for schema, columns in schema_meta.items():
             id_column = schema.idColumn()
             subcmd = ''
+
             if columns['standard']:
-                cols = ', '.join(['`{0}`'.format(col.field()) for col in columns['standard']])
+                cols = ', '.join(['"{0}"'.format(col.field()) for col in columns['standard']])
                 values = schema_records[schema]['standard']
-                subcmd += 'INSERT INTO `{0}`.`{1}` ({2}) VALUES'.format(
-                    schema.namespace() or default_namespace,
-                    schema.dbname(),
-                    cols
-                )
+                subcmd += 'INSERT INTO "{0}" ({1}) VALUES'.format(schema.dbname(), cols)
                 for value in values[:-1]:
                     subcmd += '\n({0}),'.format(value)
                 subcmd += '\n({0});'.format(values[-1])
+                subcmd += '\nSELECT last_insert_rowid() AS "{0}";'.format(id_column.field())
+
             elif columns['i18n']:
-                subcmd += '\nINSERT INTO `{0}`.`{1}` DEFAULT VALUES;'.format(
-                    schema.namespace() or default_namespace,
-                    schema.dbname()
-                )
+                subcmd += '\nINSERT INTO "{0}" DEFAULT VALUES;'.format(schema.dbname(), id_column.field())
 
             if columns['i18n']:
-                cols = ', '.join(['`{0}`'.format(col.field()) for col in columns['i18n']])
+                cols = ', '.join(['"{0}"'.format(col.field()) for col in columns['i18n']])
                 values = schema_records[schema]['i18n']
-                subcmd += '\nINSERT INTO `{0}`.`{1}_i18n` (`{1}_id`, `locale`, {2}) VALUES'.format(
-                    schema.namespace() or default_namespace,
-                    schema.dbname(),
-                    cols
-                )
+                subcmd += '\nINSERT INTO "{0}_i18n" ("{0}_id", "locale", {1}) VALUES'.format(schema.dbname(), cols)
                 for i, value in enumerate(values[:-1]):
-                    value_key = '{0}_{1}'.format(id_column.field(), i)
-                    id_value = data[value_key]
-                    if id_value == 'DEFAULT':
-                        id_value = 'LAST_INSERT_ID() - {0}'.format(len(values) - (i+1))
-
-                    subcmd += '\n({0}, %(locale)s, {1}),'.format(id_value, value)
-
-                value_key = '{0}_{1}'.format(id_column.field(), i)
-                id_value = data[value_key]
-                if id_value == 'DEFAULT':
-                    id_value = 'LAST_INSERT_ID()'
-
-                subcmd += '\n({0}, %(locale)s, {1});'.format(id_value, values[-1])
+                    subcmd += '\n(last_insert_rowid() - {0}, %(locale)s, {1}),'.format(len(values) - (i+1), value)
+                subcmd += '\n(last_insert_rowid(), %(locale)s, {0});'.format(values[-1])
+                subcmd += '\nSELECT last_insert_rowid() AS "{1}";'.format(schema.dbname(), id_column.field())
 
             cmd.append(subcmd)
-
-            if schema.idColumn().testFlag(orb.Column.Flags.AutoAssign):
-                cmd.append('SELECT * FROM `{1}`.`{2}` WHERE `{0}` >= LAST_INSERT_ID();'.format(
-                    id_column.field(),
-                    id_column.schema().namespace() or default_namespace,
-                    id_column.schema().dbname()
-                ))
 
         return '\n'.join(cmd), data
 

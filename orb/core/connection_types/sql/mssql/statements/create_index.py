@@ -19,12 +19,11 @@ class CREATE_INDEX(MSSQLStatement):
         index_name = index.dbname()
         cmd = 'CREATE' if not index.testFlag(index.Flags.Unique) else 'CREATE UNIQUE'
 
-        cols = ['`{0}`'.format(col.field())
-                if isinstance(col, orb.AbstractStringColumn) and not col.testFlag(col.Flags.CaseSensitive)
-                else '`{0}`'.format(col.field())
+        cols = ['"{0}"'.format(col.field()) if col.testFlag(col.Flags.CaseSensitive)
+                else '"{0}" COLLATE NOCASE'.format(col.field())
                 for col in index.columns()]
 
-        cmd = '{0} INDEX `{1}` ON `{2}` ({3})'.format(cmd, index_name, schema_name, ', '.join(cols))
+        cmd = '{0} INDEX "{1}" ON "{2}" ({3})'.format(cmd, index_name, schema_name, ', '.join(cols))
 
         if checkFirst:
             cmd = """\
@@ -33,12 +32,12 @@ class CREATE_INDEX(MSSQLStatement):
             IF NOT EXISTS (
                 SELECT 1
                 FROM pg_indexes
-                WHERE schemaname = '{0}'
-                AND indexname = '{1}'
-            ) THEN {2};
+                WHERE schemaname = 'public'
+                AND indexname = '{0}'
+            ) THEN {1};
             END IF;
             END$$;
-            """.format(index.schema().namespace() or orb.Context().db.name(), index_name, cmd)
+            """.format(index_name, cmd)
         else:
             cmd += ';'
 

@@ -28,7 +28,7 @@ class SELECT(MSSQLStatement):
             'default_locale': orb.system.settings().default_locale
         }
         fields = fields or {}
-        sql_group_by = set()
+        sql_group_by = []
         sql_columns = defaultdict(list)
         sql_joins = []
 
@@ -39,18 +39,18 @@ class SELECT(MSSQLStatement):
 
             if column.testFlag(column.Flags.I18n):
                 if context.locale == 'all':
-                    sql = u'hstore_agg(hstore(`i18n`.`locale`, `i18n`.`{0}`)) AS `{0}`'
+                    sql = u'hstore_agg(hstore("i18n"."locale", "i18n"."{0}")) AS "{0}"'
                 elif data['locale'] == data['default_locale'] or column.testFlag(column.Flags.I18n_NoDefault):
-                    sql = u'group_concat(`i18n`.`{0}`) AS `{0}`'
+                    sql = u'(array_agg("i18n"."{0}"))[1] AS "{0}"'
                 else:
-                    sql = u'(coalesce(group_concat(`i18n`.`{0}`), group_concat(`i18n_default`.`{0}`))) AS `{0}`'
+                    sql = u'(coalesce((array_agg("i18n"."{0}"))[1], (array_agg("i18n_default"."{0}"))[1])) AS "{0}"'
 
                 sql_columns['i18n'].append(sql.format(column.field()))
-                sql_group_by.add(u'`{0}`.`{1}`'.format(schema.dbname(), schema.idColumn().field()))
-                fields[column] = u'`i18n`.`{0}`'.format(column.field())
+                sql_group_by.append(u'"{0}"."id"'.format(schema.dbname()))
+                fields[column] = u'"i18n"."{0}"'.format(column.field())
             else:
                 # select the base record
-                sql_columns['standard'].append(u'`{0}`.`{1}` AS `{1}`'.format(schema.dbname(),
+                sql_columns['standard'].append(u'"{0}"."{1}" AS "{1}"'.format(schema.dbname(),
                                                                              column.field(),
                                                                              column.field()))
 
@@ -62,39 +62,13 @@ class SELECT(MSSQLStatement):
                 if not column:
                     raise orb.errors.ColumnNotFound(col)
 
-                field = fields.get(column) or u'`{0}`.`{1}`'.format(schema.dbname(), column.field())
+                field = fields.get(column) or u'"{0}"."{1}"'.format(schema.dbname(), column.field())
                 if sql_group_by:
-                    sql_group_by.add(field)
+                    sql_group_by.append(field)
                 sql_order_by.append(u'{0} {1}'.format(field, dir.upper()))
 
-                if context.distinct:
-                    sql_columns['standard'].append(field)
-
-        if schema.inherits():
-            icols = ['`{0}`.`{1}` AS `{1}`'.format(col.schema().dbname(), col.field()) for col in columns]
-            inherited_sources = []
-            curr_schema = schema
-
-            for ischema in schema.inheritanceTree():
-                isql = 'LEFT JOIN `{0}`.`{1}` ON `{1}`.`{2}` = `{3}`.`{2}`'.format(ischema.namespace() or context.db.name(),
-                                                                                   ischema.dbname(),
-                                                                                   ischema.idColumn().field(),
-                                                                                   curr_schema.dbname())
-                inherited_sources.append(isql)
-                curr_schema = ischema
-
-            source = '(SELECT {0} FROM `{1}`.`{3}` ' \
-                     '{2}' \
-                     ') AS `{3}`'.format(', '.join(icols),
-                                         schema.namespace() or context.db.name(),
-                                         '\n'.join(inherited_sources),
-                                         schema.dbname())
-        else:
-            source = '`{0}`.`{1}`'.format(schema.namespace() or context.db.name(), schema.dbname())
-
-        # determine the selection criteria
         if context.distinct is True:
-            cmd = ['SELECT DISTINCT {0} FROM `{1}`'.format(', '.join(sql_columns['standard'] + sql_columns['i18n']), )]
+            cmd = ['SELECT DISTINCT {0} FROM "{1}"'.format(', '.join(sql_columns['standard'] + sql_columns['i18n']), schema.dbname())]
         elif isinstance(context.distinct, (list, set, tuple)):
             on_ = []
             for col in context.distinct:
@@ -102,13 +76,14 @@ class SELECT(MSSQLStatement):
                 if not column:
                     raise orb.errors.ColumnNotFound(col)
                 else:
-                    on_.append(fields.get(col) or u'`{0}`.`{1}`'.format(schema.dbname(), col.field()))
+                    on_.append(fields.get(col) or u'"{0}"."{1}"'.format(schema.dbname(), col.field()))
 
-            cmd = [u'SELECT DISTINCT ON ({0}) {1} FROM {2}'.format(', '.join(on_),
-                                                                   ', '.join(sql_columns['standard'] + sql_columns['i18n']),
-                                                                   source)]
+            cmd = [u'SELECT MIN({0}) {1} FROM "{2}"'.format(', '.join(on_),
+                                                                    ', '.join(sql_columns['standard'] + sql_columns['i18n']),
+                                                                    schema.dbname())]
+            sql_group_by.append(on_)
         else:
-            cmd = [u'SELECT {0} FROM {1}'.format(', '.join(sql_columns['standard'] + sql_columns['i18n']), source)]
+            cmd = [u'SELECT {0} FROM "{1}"'.format(', '.join(sql_columns['standard'] + sql_columns['i18n']), schema.dbname())]
 
         # add sql joins to the statement
         if sql_joins:
@@ -117,13 +92,12 @@ class SELECT(MSSQLStatement):
         # join in the i18n table
         if sql_columns['i18n']:
             if context.locale == 'all':
-                cmd.append(u'LEFT JOIN `{0}`.`{1}_i18n` AS `i18n` ON (`i18n`.`{1}_id` = `id`)'.format(schema.namespace() or context.db.name(),
-                                                                                                      schema.dbname()))
+                cmd.append(u'LEFT JOIN "{0}_i18n" AS "i18n" ON ("i18n"."{0}_id" = "id")'.format(schema.dbname()))
             else:
-                sql = u'LEFT JOIN `{0}`.`{1}_i18n` AS `i18n` ON (`i18n`.`{1}_id` = `id` AND `i18n`.`locale` = %(locale)s)'
+                sql = u'LEFT JOIN "{0}_i18n" AS "i18n" ON ("i18n"."{0}_id" = "id" AND "i18n"."locale" = %(locale)s)'
                 if data['locale'] != data['default_locale']:
-                    sql += u'\nLEFT JOIN `{1}_i18n` AS `i18n_default` ON (`i18n_default`.`{1}_id` = `id` AND `i18n_default`.`locale` = %(default_locale)s)'
-                cmd.append(sql.format(schema.namespace() or context.db.name(), schema.dbname()))
+                    sql += u'\nLEFT JOIN "{0}_i18n" AS "i18n_default" ON ("i18n_default"."{0}_id" = "id" AND "i18n_default"."locale" = %(default_locale)s)'
+                cmd.append(sql.format(schema.dbname()))
 
         # generate sql statements
         try:
@@ -136,7 +110,7 @@ class SELECT(MSSQLStatement):
         if sql_where:
             cmd.append(u'WHERE {0}'.format(sql_where))
         if sql_group_by:
-            cmd.append(u'GROUP BY {0}'.format(', '.join(list(sql_group_by))))
+            cmd.append(u'GROUP BY {0}'.format(', '.join(sql_group_by)))
         if sql_order_by:
             cmd.append(u'ORDER BY {0}'.format(', '.join(sql_order_by)))
         if context.start:

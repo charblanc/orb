@@ -15,7 +15,7 @@ class ADD_COLUMN(MSSQLStatement):
                 if flag_sql:
                     flags.append(flag_sql)
 
-        sql = u'ADD COLUMN `{0}` {1} {2}'.format(column.field(), column.dbType('MSSQL'), ' '.join(flags)).strip()
+        sql = u'ADD COLUMN "{0}" {1} {2}'.format(column.field(), column.dbType('MSSQL'), ' '.join(flags)).strip()
         return sql, {}
 
 

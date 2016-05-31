@@ -16,7 +16,8 @@ class BinaryColumn(Column):
     TypeMap = {
         'Postgres': 'TEXT',
         'SQLite': 'BLOB',
-        'MySQL': 'TEXT'
+        'MySQL': 'TEXT',
+        'MSSQL': 'TEXT'
     }
 
     def random(self):
@@ -60,7 +61,8 @@ class JSONColumn(Column):
     TypeMap = {
         'Postgres': 'TEXT',
         'SQLite': 'TEXT',
-        'MySQL': 'TEXT'
+        'MySQL': 'TEXT',
+        'MSSQL': 'TEXT'
     }
 
     def random(self):
@@ -134,7 +136,8 @@ class YAMLColumn(Column):
     TypeMap = {
         'Postgres': 'TEXT',
         'SQLite': 'TEXT',
-        'MySQL': 'TEXT'
+        'MySQL': 'TEXT',
+        'MSSQL': 'TEXT'
     }
 
     def random(self):

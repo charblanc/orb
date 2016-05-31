@@ -84,7 +84,8 @@ class DateColumn(AbstractDatetimeColumn):
     TypeMap = {
         'Postgres': 'DATE',
         'SQLite': 'TEXT',
-        'MySQL': 'DATE'
+        'MySQL': 'DATE',
+        'MSSQL': 'DATE'
     }
 
     def __init__(self, **kwds):
@@ -137,7 +138,8 @@ class DatetimeColumn(AbstractDatetimeColumn):
     TypeMap = {
         'Postgres': 'TIMESTAMP WITHOUT TIME ZONE',
         'SQLite': 'TEXT',
-        'MySQL': 'DATETIME'
+        'MySQL': 'DATETIME',
+        'MSSQL': 'DATETIME'
     }
 
     def __init__(self, **kwds):
@@ -181,7 +183,8 @@ class DatetimeWithTimezoneColumn(AbstractDatetimeColumn):
     TypeMap = {
         'Postgres': 'TIMESTAMP WITHOUT TIME ZONE',
         'SQLite': 'TEXT',
-        'MySQL': 'DATETIME'
+        'MySQL': 'DATETIME',
+        'MSSQL': 'DATETIME'
     }
 
     def __init__(self, **kwds):
@@ -294,7 +297,8 @@ class IntervalColumn(AbstractDatetimeColumn):
     TypeMap = {
         'Postgres': 'INTERVAL',
         'SQLite': 'TEXT',
-        'MySQL': 'TEXT'
+        'MySQL': 'TEXT',
+        'MSSQL': 'TEXT'
     }
 
     def valueFromString(self, value, context=None):
@@ -322,7 +326,8 @@ class TimeColumn(AbstractDatetimeColumn):
     TypeMap = {
         'Postgres': 'TIME',
         'SQLite': 'TEXT',
-        'MySQL': 'TIME'
+        'MySQL': 'TIME',
+        'MSSQL': 'TIME'
     }
 
     def __init__(self, **kwds):
@@ -379,7 +384,8 @@ class TimestampColumn(AbstractDatetimeColumn):
     TypeMap = {
         'Postgres': 'BIGINT',
         'SQLite': 'INTEGER',
-        'MySQL': 'BIGINT'
+        'MySQL': 'BIGINT',
+        'MSSQL': 'BIGINT'
     }
 
     def dbRestore(self, db_value, context=None):
@@ -428,7 +434,8 @@ class UTC_DatetimeColumn(AbstractDatetimeColumn):
     TypeMap = {
         'Postgres': 'TIMESTAMP',
         'SQLite': 'TEXT',
-        'MySQL': 'DATETIME'
+        'MySQL': 'DATETIME',
+        'MSSQL': 'DATETIME'
     }
 
     def __init__(self, **kwds):
@@ -473,7 +480,8 @@ class UTC_TimestampColumn(AbstractDatetimeColumn):
     TypeMap = {
         'Postgres': 'BIGINT',
         'SQLite': 'TEXT',
-        'MySQL': 'BIGINT'
+        'MySQL': 'BIGINT',
+        'MSSQL': 'BIGINT'
     }
 
     def dbRestore(self, db_value, context=None):

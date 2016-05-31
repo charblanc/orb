@@ -19,25 +19,13 @@ class DELETE(MSSQLStatement):
                 where, data = '', {}
 
             sql_options = {
-                'namespace': model.schema().namespace() or context.db.name(),
                 'table': model.schema().dbname(),
-                'id_col': model.schema().idColumn().field(),
                 'where': 'WHERE {0}'.format(where) if where else ''
             }
             sql = (
-                u'DELETE FROM `{namespace}`.`{table}`\n'
+                u'DELETE FROM "{table}"\n'
                 u'{where};'
             ).format(**sql_options)
-
-            if model.schema().columns(flags=orb.Column.Flags.I18n):
-                i18n_sql = (
-                    u'DELETE FROM `{namespace}`.`{table}_i18n`\n'
-                    u'WHERE `{table}_id` IN (\n'
-                    u'    SELECT `{id_col}` FROM {table}'
-                    u'    {where}'
-                    u');\n'
-                ).format(**sql_options)
-                sql = i18n_sql + sql
 
             records.clear()
             return sql, data
@@ -51,17 +39,8 @@ class DELETE(MSSQLStatement):
 
             data = {}
             sql = []
-            default_namespace = orb.Context().db.name()
             for schema, ids in delete_info.items():
-                schema_sql = u'DELETE FROM `{0}`.`{1}` WHERE {2} IN %({1}_ids)s;'
-                schema_sql = schema_sql.format(schema.namespace() or default_namespace,
-                                               schema.dbname(),
-                                               schema.idColumn().field())
-                if schema.columns(flags=orb.Column.Flags.I18n):
-                    i18n_sql = u'DELETE FROM `{0}`.`{1}_i18n` WHERE `{1}_id` IN %({1}_ids)s;'.format(schema.namespace(),
-                                                                                                     schema.dbname())
-                    schema_sql = i18n_sql + schema_sql
-                sql.append(schema_sql)
+                sql.append(u'DELETE FROM "{0}" WHERE {1} IN %({0}_ids)s;'.format(schema.dbname(), schema.idColumn().field()))
                 data[schema.dbname() + '_ids'] = tuple(ids)
 
             return u'\n'.join(sql), data

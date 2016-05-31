@@ -12,7 +12,8 @@ class BooleanColumn(Column):
     TypeMap = {
         'Postgres': 'BOOLEAN',
         'SQLite': 'INTEGER',
-        'MySQL': 'BOOLEAN'
+        'MySQL': 'BOOLEAN',
+        'MSSQL': 'BIT'
     }
 
     def random(self):

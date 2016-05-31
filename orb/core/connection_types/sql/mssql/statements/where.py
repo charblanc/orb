@@ -57,7 +57,7 @@ class WHERE(MSSQLStatement):
                 elif isinstance(val, (tuple, list, set)):
                     return tuple(convert_value(v) for v in val)
                 else:
-                     return val
+                    return val
 
             value = convert_value(value)
 
@@ -111,18 +111,14 @@ class WHERE(MSSQLStatement):
 
                 if column.testFlag(column.Flags.I18n) and column not in fields:
                     model_name = aliases.get(model) or model.schema().dbname()
-                    i18n_sql = u'`{name}`.`{field}` IN (' \
-                          u'    SELECT `{name}_id`' \
-                          u'    FROM `{namespace}`.`{name}_i18n`' \
+                    i18n_sql = u'"{name}"."{field}" IN (' \
+                          u'    SELECT "{name}_id"' \
+                          u'    FROM "{name}_i18n"' \
                           u'    WHERE {sub_sql}' \
                           u')'
 
-                    default_namespace = orb.Context().db.name()
-                    sub_sql = sql.replace('`{0}`'.format(model_name), '`{0}_i18n`'.format(model_name))
-                    sql = i18n_sql.format(name=model_name,
-                                          namespace=model.schema().namespace() or default_namespace,
-                                          sub_sql=sub_sql,
-                                          field=model.schema().idColumn().field())
+                    sub_sql = sql.replace('"{0}"'.format(model_name), '"{0}_i18n"'.format(model_name))
+                    sql = i18n_sql.format(name=model_name, sub_sql=sub_sql, field=model.schema().idColumn().field())
 
         return sql, data
 
@@ -130,7 +126,7 @@ class WHERE(MSSQLStatement):
         alias = aliases.get(model) or model.schema().dbname()
         field = column.field()
 
-        sql_field = '`{0}`.`{1}`'.format(alias, field)
+        sql_field = '"{0}"."{1}"'.format(alias, field)
 
         # process any functions on the query
         for func in query.functions():
@@ -168,8 +164,8 @@ class WHERE(MSSQLStatement):
         non_sensitive_mapping = {
             orb.Query.Op.Matches: u'~*',
             orb.Query.Op.DoesNotMatch: u'!~*',
-            orb.Query.Op.Contains: u'LIKE',
-            orb.Query.Op.DoesNotContain: u'NOT LIKE'
+            orb.Query.Op.Contains: u'ILIKE',
+            orb.Query.Op.DoesNotContain: u'NOT ILIKE'
         }
 
         return general_mapping.get(op) or (sensitive_mapping[op] if caseSensitive else non_sensitive_mapping[op])
@@ -177,10 +173,10 @@ class WHERE(MSSQLStatement):
     @staticmethod
     def funcSql(func):
         func_mapping = {
-            orb.Query.Function.Lower: u'lcase({0})',
-            orb.Query.Function.Upper: u'ucase({0})',
+            orb.Query.Function.Lower: u'lower({0})',
+            orb.Query.Function.Upper: u'upper({0})',
             orb.Query.Function.Abs: u'abs({0})',
-            orb.Query.Function.AsString: u'cast({0} as varchar)'
+            orb.Query.Function.AsString: u'{0}::varchar'
         }
         return func_mapping[func]
 

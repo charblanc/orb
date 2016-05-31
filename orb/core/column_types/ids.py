@@ -33,7 +33,7 @@ class IdColumn(Column):
     def dbStore(self, typ, py_value, context=None):
         if py_value is None:
             if self.type() in {'default', 'numeric'}:
-                if typ in ('Postgres', 'MySQL'):
+                if typ in ('Postgres', 'MySQL', 'MSSQL'):
                     return 'DEFAULT'
                 else:
                     return py_value
@@ -50,6 +50,8 @@ class IdColumn(Column):
                 return 'SERIAL'
             elif typ == 'SQLite':
                 return 'INTEGER'
+            elif typ == 'MSSQL':
+                return 'BIGINT IDENTITY(1,1)'
             else:
                 return 'BIGINT AUTO_INCREMENT'
 

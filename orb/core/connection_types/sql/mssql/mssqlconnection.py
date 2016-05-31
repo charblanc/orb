@@ -1,9 +1,9 @@
 """ Defines the backend connection class for PostgreSQL databases. """
 
+import datetime
 import logging
 import orb
 import re
-import traceback
 
 from projex.text import nativestring as nstr
 
@@ -14,11 +14,12 @@ log = logging.getLogger(__name__)
 
 try:
     import pymssql
+
 except ImportError:
-    log.debug('For MSSQL backend, download the PyMSSQL module')
+    log.debug('For MSSQL backend, ensure your python version supports sqlite3')
     pymssql = None
 
-# ----------------------------------------------------------------------
+
 
 class MSSQLStatement(SQLStatement):
     pass
@@ -26,7 +27,7 @@ class MSSQLStatement(SQLStatement):
 
 # noinspection PyAbstractClass
 class MSSQLConnection(SQLConnection):
-    """
+    """ 
     Creates a PostgreSQL backend connection type for handling database
     connections to PostgreSQL databases.
     """
@@ -35,7 +36,7 @@ class MSSQLConnection(SQLConnection):
     # PROTECTED METHODS
     # ----------------------------------------------------------------------
     def _closed(self, native):
-        return not bool(native.open)
+        return False
 
     def _execute(self,
                  native,
@@ -46,106 +47,172 @@ class MSSQLConnection(SQLConnection):
         """
         Executes the inputted command into the current \
         connection cursor.
-
+        
         :param      command    | <str>
                     data       | <dict> || None
-
+                    autoCommit | <bool> | commit database changes immediately
+                    autoClose  | <bool> | closes connections immediately
+        
         :return     [{<str> key: <variant>, ..}, ..], <int> count
         """
         if data is None:
             data = {}
 
-        with native.cursor() as cursor:
+        # check to make sure the connection hasn't been reset or lost
+        cursor = native.cursor()
+
+        # determine if we're executing multiple statements at once
+        commands = [cmd for cmd in command.split(';') if cmd]
+        if len(commands) > 1:
+            commands.insert(0, 'BEGIN TRANSACTION')
+
+        def _gen_sub_value(val):
+            output = []
+            replace = []
+
+            for sub_value in val:
+                if isinstance(sub_value, (list, tuple, set)):
+                    cmd, vals = _gen_sub_value(sub_value)
+                    replace.append(cmd)
+                    output += vals
+                else:
+                    replace.append('?')
+                    output.append(sub_value)
+
+                return '({0})'.format(','.join(replace)), output
+
+        rowcount = 0
+        for cmd in commands:
+            if not cmd.endswith(';'):
+                cmd += ';'
+
             log.debug('***********************')
-            log.debug(command % data)
+            log.debug(command)
+            log.debug(data)
             log.debug('***********************')
 
             try:
-                rowcount = 0
-                for cmd in command.split(';'):
-                    cmd = cmd.strip()
-                    if cmd:
-                        cursor.execute(cmd.strip(';') + ';', data)
-                        rowcount += cursor.rowcount
+                cursor.execute(cmd, data)
 
-            # look for a disconnection error
-            except pymssql.InterfaceError:
-                raise orb.errors.ConnectionLost()
+                if cursor.rowcount != -1:
+                    rowcount += cursor.rowcount
 
-            # look for integrity errors
-            except (pymssql.IntegrityError, pymssql.OperationalError) as err:
-                native.rollback()
+            # look for a cancelled query
+            except pymssql.OperationalError as err:
+                if err == 'interrupted':
+                    raise orb.errors.Interruption()
+                else:
+                    log.exception('Unkown query error.')
+                    raise orb.errors.QueryFailed(cmd, data, nstr(err))
 
-                # look for a duplicate error
-                if err[0] == 1062:
-                    raise orb.errors.DuplicateEntryFound(err[1])
+            # look for duplicate entries
+            except pymssql.IntegrityError as err:
+                duplicate_error = re.search('UNIQUE constraint failed: (.*)', nstr(err))
+                if duplicate_error:
+                    result = duplicate_error.group(1)
+                    msg = '{value} is already being used.'.format(value=result)
+                    raise orb.errors.DuplicateEntryFound(msg)
+                else:
+                    # unknown error
+                    log.exception('Unknown query error.')
+                    raise orb.errors.QueryFailed(command, data, nstr(err))
 
-                # look for a reference error
-                reference_error = re.search('Key .* is still referenced from table ".*"', nstr(err))
-                if reference_error:
-                    msg = 'Cannot remove this record, it is still being referenced.'
-                    raise orb.errors.CannotDelete(msg)
+            # look for any error
+            except Exception as err:
+                log.exception('Unknown query error.')
+                raise orb.errors.QueryFailed(cmd, data, nstr(err))
 
-                # unknown error
-                log.debug(traceback.print_exc())
-                raise orb.errors.QueryFailed(command, data, nstr(err))
-
-            # connection has closed underneath the hood
-            except pymssql.Error as err:
-                native.rollback()
-                log.error(traceback.print_exc())
-                raise orb.errors.QueryFailed(command, data, nstr(err))
-
+        if returning:
             try:
-                raw = cursor.fetchall()
-                results = [mapper(record) for record in raw]
-            except pymssql.ProgrammingError:
+                raw_results = cursor.fetchall()
+            except pymssql.OperationalError:
                 results = []
+            else:
+                results = [mapper(record) for record in raw_results]
+            rowcount = len(results)  # for some reason, rowcount in mssql3 returns -1 for selects...
+        else:
+            results = []
 
-            return results, rowcount
+        return results, rowcount
 
     def _open(self, db):
         """
         Handles simple, SQL specific connection creation.  This will not
         have to manage thread information as it is already managed within
         the main open method for the SQLBase class.
-
+        
         :param      db | <orb.Database>
-
+        
         :return     <variant> | backend specific database connection
         """
         if not pymssql:
-            raise orb.errors.BackendNotFound('psycopg2 is not installed.')
+            raise orb.errors.BackendNotFound('pymssql is not installed.')
 
-        # create the python connection
+        dbname = db.name()
+
         try:
-            return pymssql.connect(server=db.host() or 'localhost',
-                                   port=db.port() or 1433,
-                                   user=db.username(),
-                                   password=db.password(),
-                                   database=db.name())
-        except pymssql.OperationalError as err:
-            log.exception('Failed to connect to MSSQL')
+            mssql_db = pymssql.connect(
+                server=db.host(),
+                port=db.port() or 1433,
+                user=db.username(),
+                password=db.password(),
+                database=db.name()
+            )
+            return mssql_db
+        except pymssql.Error:
+            log.exception('Failed to connect to pymssql')
             raise orb.errors.ConnectionFailed()
 
     def _interrupt(self, threadId, connection):
         """
         Interrupts the given native connection from a separate thread.
-
+        
         :param      threadId   | <int>
                     connection | <variant> | backend specific database.
         """
         try:
-            connection.close()
-        except pymssql.Error:
+            connection.interrupt()
+        except StandardError:
             pass
 
+    def delete(self, records, context):
+        count = len(records)
+        super(MSSQLConnection, self).delete(records, context)
+        return [], count
+
     def schemaInfo(self, context):
-        info = super(MSSQLConnection, self).schemaInfo(context)
-        for v in info.values():
-            v['fields'] = v['fields'].split(',')
-            v['indexes'] = v['indexes'].split(',')
-        return info
+        tables_sql = """
+          SELECT table_name
+          FROM information_schema.tables
+          WHERE table_type = 'BASE TABLE' AND table_catalog='dbName'
+        """
+        tables = [x['table_name'] for x in self.execute(tables_sql)[0]]
+        print tables
+
+        output = {}
+        for table in tables:
+            if table.endswith('_i18n'):
+                continue
+
+            columns, _ = self.execute("PRAGMA table_info({table});".format(table=table))
+            columns = [c['name'] for c in columns]
+
+            indexes, _ = self.execute("PRAGMA index_list({table});".format(table=table))
+            indexes = [i['name'] for i in indexes]
+
+            if (table + '_i18n') in tables:
+                i18n_columns, _ = self.execute("PRAGMA table_info({table}_i18n);".format(table=table))
+                columns += [c['name'] for c in i18n_columns]
+
+                i18n_indexes, _ = self.execute("PRAGMA index_list({table}_i18n);".format(table=table))
+                indexes += [i['name'] for i in i18n_indexes]
+
+            output[table] = {
+                'fields': columns,
+                'indexes': indexes
+            }
+
+        return output
 
     # ----------------------------------------------------------------------
 
@@ -153,9 +220,9 @@ class MSSQLConnection(SQLConnection):
     def statement(cls, code=''):
         """
         Returns the statement interface for this connection.
-
+        
         :param      code | <str>
-
+        
         :return     subclass of <orb.core.backends.sql.SQLStatement>
         """
         return MSSQLStatement.byName(code) if code else MSSQLStatement

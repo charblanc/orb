@@ -68,10 +68,11 @@ class DecimalColumn(AbstractNumericColumn):
     TypeMap = {
         'Postgres': 'DECIMAL',
         'SQLite': 'REAL',
-        'MySQL': 'DECIMAL'
+        'MySQL': 'DECIMAL',
+        'MSSQL': 'DECIMAL'
     }
 
-    def __init__(self, precision=65, scale=30, **kwds):
+    def __init__(self, precision=38, scale=30, **kwds):
         super(DecimalColumn, self).__init__(**kwds)
 
         # define custom properties
@@ -79,7 +80,7 @@ class DecimalColumn(AbstractNumericColumn):
         self.__scale = scale
 
     def dbType(self, connectionType):
-        if connectionType in ('Postgres', 'MySQL'):
+        if connectionType in ('Postgres', 'MySQL', 'MSSQL'):
             return 'DECIMAL({0}, {1})'.format(self.precision(), self.scale())
         else:
             return super(DecimalColumn, self).dbType(connectionType)
@@ -123,7 +124,8 @@ class FloatColumn(AbstractNumericColumn):
     TypeMap = {
         'Postgres': 'DOUBLE PRECISION',
         'SQLite': 'REAL',
-        'MySQL': 'DOUBLE'
+        'MySQL': 'DOUBLE',
+        'MSSQL': 'FLOAT'
     }
 
 
@@ -131,7 +133,8 @@ class IntegerColumn(AbstractNumericColumn):
     TypeMap = {
         'Postgres': 'INTEGER',
         'SQLite': 'INTEGER',
-        'MySQL': 'INTEGER'
+        'MySQL': 'INTEGER',
+        'MSSQL': 'INTEGER'
     }
 
     def __init__(self, minimum=None, maximum=None, **kwds):
@@ -149,7 +152,8 @@ class LongColumn(AbstractNumericColumn):
     TypeMap = {
         'Postgres': 'BIGINT',
         'SQLite': 'INTEGER',
-        'MySQL': 'BIGINT'
+        'MySQL': 'BIGINT',
+        'MSSQL': 'BIGINT'
     }
 
     def __init__(self, minimum=None, maximum=None, **kwds):

@@ -7,10 +7,10 @@ orb = lazy_import('orb')
 class ENABLE_INTERNALS(MSSQLStatement):
     def __call__(self, model=None, enabled=True):
         if model is not None:
-            sql = u'ALTER TABLE `{0}` {1} KEYS;'.format(model.schema().dbname(), 'ENABLE' if enabled else 'DISABLE')
+            sql = u'ALTER TABLE "{0}" {1} KEYS;'.format(model.schema().dbname(), 'ENABLE' if enabled else 'DISABLE')
         else:
-            sql = u'SET unique_checks={0};' \
-                   u'SET foreign_key_checks={0}'.format(int(enabled))
+            sql = u'PRAGMA foreign_keys={0};' \
+                  u'PRAGMA count_changes={0};'.format('TRUE' if enabled else 'FALSE')
 
         return sql, {}
 

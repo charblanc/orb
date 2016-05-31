@@ -78,8 +78,11 @@ class ReferenceColumn(Column):
             return '{0} REFERENCES "{1}"."{2}"'.format(typ, namespace or 'public', dbname)
         elif connectionType == 'SQLite':
             return id_column.dbType(connectionType)
-        elif connectionType == 'MySQL':
+        elif connectionType in 'MySQL':
             typ = id_column.dbType(connectionType).replace('AUTO_INCREMENT', '').strip()
+            return '{0} REFERENCES `{1}`.`{2}`'.format(typ, namespace, dbname)
+        elif connectionType in 'MSSQL':
+            typ = id_column.dbType(connectionType).replace('IDENTITY(1,1)', '').strip()
             return '{0} REFERENCES `{1}`.`{2}`'.format(typ, namespace, dbname)
         else:
             return ''

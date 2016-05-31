@@ -127,7 +127,8 @@ class StringColumn(AbstractStringColumn):
     TypeMap = {
         'Postgres': 'CHARACTER VARYING',
         'SQLite': 'TEXT',
-        'MySQL': 'varchar'
+        'MySQL': 'varchar',
+        'MSSQL': 'varchar'
     }
 
     def __init__(self,
@@ -179,7 +180,8 @@ class TextColumn(AbstractStringColumn):
     TypeMap = {
         'Postgres': 'TEXT',
         'SQLite': 'TEXT',
-        'MySQL': 'TEXT'
+        'MySQL': 'TEXT',
+        'MSSQL': 'TEXT'
     }
 
 
