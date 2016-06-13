@@ -126,7 +126,7 @@ class MySQLConnection(SQLConnection):
                                    port=db.port() or 3306,
                                    cursorclass=pymysql.cursors.DictCursor)
         except pymysql.OperationalError as err:
-            log.exception('Failed to connect to postgres')
+            log.exception('Failed to connect to MySQL')
             raise orb.errors.ConnectionFailed()
 
     def _interrupt(self, threadId, connection):
@@ -162,7 +162,7 @@ class MySQLConnection(SQLConnection):
         return MySQLStatement.byName(code) if code else MySQLStatement
 
 
-# register the postgres backend
+# register the MySQL backend
 if pymysql:
     orb.Connection.registerAddon('MySQL', MySQLConnection)
 

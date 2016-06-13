@@ -134,7 +134,7 @@ def testing_schema(orb):
         id = orb.IdColumn()
         username = orb.StringColumn(flags={'Unique'})
         password = orb.PasswordColumn()
-        token = orb.TokenColumn()
+        token = orb.TokenColumn(validated=False)
 
         groups = orb.Pipe(through='GroupUser', from_='user', to='group')
         userGroups = orb.ReverseLookup(from_column='GroupUser.user')

@@ -28,8 +28,8 @@ class MSSQLStatement(SQLStatement):
 # noinspection PyAbstractClass
 class MSSQLConnection(SQLConnection):
     """ 
-    Creates a PostgreSQL backend connection type for handling database
-    connections to PostgreSQL databases.
+    Creates a SQL Server backend connection type for handling database
+    connections to SQL Server databases.
     """
 
     # ----------------------------------------------------------------------
@@ -228,7 +228,7 @@ class MSSQLConnection(SQLConnection):
         return MSSQLStatement.byName(code) if code else MSSQLStatement
 
 
-# register the postgres backend
+# register the SQL Server backend
 if pymssql:
     orb.Connection.registerAddon('MSSQL', MSSQLConnection)
 

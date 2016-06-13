@@ -355,7 +355,7 @@ class PasswordColumn(StringColumn):
 
 
 class TokenColumn(StringColumn):
-    def __init__(self, bits=32, **kwds):
+    def __init__(self, bits=32, validated=True, **kwds):
         kwds['maxLength'] = bits * 2
 
         super(TokenColumn, self).__init__(**kwds)
@@ -366,6 +366,7 @@ class TokenColumn(StringColumn):
 
         # set custom properties
         self.__bits = bits
+        self.__validated = validated
 
     def bits(self):
         """
@@ -392,6 +393,9 @@ class TokenColumn(StringColumn):
 
         :return:    <str>
         """
+        if not self.__validated:
+            return os.urandom(self.__bits).encode('hex')
+
         try:
             model = self.schema().model()
         except AttributeError:
