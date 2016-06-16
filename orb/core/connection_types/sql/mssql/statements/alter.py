@@ -61,17 +61,19 @@ class ALTER(MSSQLStatement):
                 'id_field': id_column.field()
             }
 
-            i18n_sql = (
-                u'CREATE TABLE IF NOT EXISTS "{table}_i18n" (\n'
-                u'  "locale" CHARACTER VARYING(5),\n'
-                u'  "{table}_id" {id_type} REFERENCES "{table}" ("{id_field}") ON DELETE CASCADE,\n'
-                u'  CONSTRAINT "{table}_i18n_pkey" PRIMARY KEY ("locale", "{table}_id")\n'
-                u');'
-                u'ALTER TABLE "{table}_i18n"'
-                u'{fields};'
-            ).format(**i18n_options)
+            sql += u"""
+            IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='{table}')
+            BEGIN
+                CREATE TABLE "{table}_i18n" (
+                    "locale" VARCHAR(5),
+                    "{table}_id" {id_type} REFERENCES "{table}" ("{id_field}") ON DELETE CASCADE,
+                    CONSTRAINT "{table}_i18n_pkey" PRIMARY KEY ("locale", "{table}_id")
+                )
 
-            sql += '\n' + i18n_sql
+                ALTER TABLE "{table}_i18n"
+                {fields}
+            END
+            """.format(**i18n_options)
 
         return sql, {}
 

@@ -35,7 +35,7 @@ class CREATE(MSSQLStatement):
         # create the standard model
         cmd_body = []
         if add_standard:
-            cmd_body += [ADD_COLUMN(col)[0].replace('ADD COLUMN ', '') for col in add_standard]
+            cmd_body += [ADD_COLUMN(col)[0].replace('ADD ', '') for col in add_standard]
 
         inherits = model.schema().inherits()
         if inherits:
@@ -55,9 +55,13 @@ class CREATE(MSSQLStatement):
         if body:
             body = '\n\t' + body + '\n'
 
-        cmd  = "if not exists (select * from sysobjects where name='{table}' and xtype='U')\n"
-        cmd += '    CREATE TABLE "{table}" ({body});'
-        cmd = cmd.format(table=model.schema().dbname(), body=body, owner=owner)
+        cmd = u"""
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='{table}')
+        BEGIN
+            CREATE TABLE "{table}" (
+                {body}
+            )
+        """.format(table=model.schema().dbname(), body=body, owner=owner)
 
         # create the i18n model
         if add_i18n:
@@ -66,17 +70,19 @@ class CREATE(MSSQLStatement):
 
             i18n_body = ',\n\t'.join([ADD_COLUMN(col)[0].replace('ADD COLUMN ', '') for col in add_i18n])
 
-            i18n_cmd  = 'CREATE TABLE "{table}_i18n" (\n'
-            i18n_cmd += '   "locale" CHARACTER VARYING(5),\n'
-            i18n_cmd += '   "{table}_id" {id_type} REFERENCES "{table}" ({pcol}),\n'
-            i18n_cmd += '   {body},\n'
-            i18n_cmd += '   CONSTRAINT "{table}_i18n_pkey" PRIMARY KEY ("{table}_id", "locale")\n'
-            i18n_cmd += ');\n'
-
-            i18n_cmd = i18n_cmd.format(table=model.schema().dbname(),
-                                       id_type=id_type, pcol=pcol, body=i18n_body, owner=owner)
-
-            cmd += '\n' + i18n_cmd
+            cmd += u"""
+            CREATE TABLE "{table}_i18n" (
+                "locale" VARCHAR(5),
+                "{table}_id" {id_type} REFERENCES "{table}" ({pcol}),
+                {body},
+                CONSTRAINT "{table}_i18n_pkey" PRIMARY KEY ("{table}_id", "locale")
+            )
+            """.format(table=model.schema().dbname(),
+                       id_type=id_type,
+                       pcol=pcol,
+                       body=i18n_body,
+                       owner=owner)
+        cmd += 'END'
 
         return cmd, {}
 

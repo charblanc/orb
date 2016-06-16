@@ -51,37 +51,44 @@ class UPDATE(MSSQLStatement):
 
         sql = []
         if standard_values:
-            standard_sql = (
-                u'UPDATE "{table}"\n'
-                u'SET {values}\n'
-                u'WHERE "{table}"."{field}" = %({id})s;'
-            ).format(table=record.schema().dbname(), id=id_key,
-                     values=', '.join(standard_values), field=record.schema().idColumn().field())
+            standard_sql = u"""
+            UPDATE "{table}"
+            SET {values}
+            WHERE "{table}"."{field}" = %({id})s
+            """.format(
+                table=record.schema().dbname(),
+                id=id_key,
+                values=', '.join(standard_values),
+                field=record.schema().idColumn().field()
+            )
             sql.append(standard_sql)
 
         if i18n_fields:
             for locale in i18n_values:
-                i18n_sql = (
-                    u'DO $$\n'
-                    u'BEGIN\n'
-                    u'IF NOT EXISTS (\n'
-                    u'  SELECT 1\n'
-                    u'  FROM "{table}_i18n"\n'
-                    u'  WHERE "{table}_id" = %({id})s AND "locale" = \'{locale}\'\n'
-                    u')\n'
-                    u'THEN\n'
-                    u'  INSERT INTO "{table}_i18n" ("{table}_id", "locale", {fields})\n'
-                    u'  VALUES (%({id})s, \'{locale}\', {keys});\n'
-                    u'ELSE\n'
-                    u'  UPDATE "{table}_i18n"\n'
-                    u'  SET {values}\n'
-                    u'  WHERE "{table}_id" = %({id})s AND "locale" = \'{locale}\';\n'
-                    u'END IF;\n'
-                    u'END $$;'
-                ).format(table=record.schema().dbname(), id=id_key, locale=locale,
-                         values=', '.join(i18n_values[locale]),
-                         keys=', '.join(i18n_keys[locale]),
-                         fields=', '.join(i18n_fields[locale]))
+                i18n_sql = u"""
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM "{table}_i18n"
+                    WHERE "{table}_id" = %({id})s AND "locale" = '{locale}'
+                )
+                    BEGIN
+                        INSERT INTO "{table}_i18n" ("{table}_id", "locale", {fields})
+                        VALUES (%({id})s, '{locale}', {keys})
+                    END
+                ELSE
+                    BEGIN
+                        UPDATE "{table}_i18n"
+                        SET {values}
+                        WHERE "{table}_id" = %({id})s AND "locale" = '{locale}'
+                    END
+                """.format(
+                    table=record.schema().dbname(),
+                    id=id_key,
+                    locale=locale,
+                    values=', '.join(i18n_values[locale]),
+                    keys=', '.join(i18n_keys[locale]),
+                    fields=', '.join(i18n_fields[locale])
+                )
                 sql.append(i18n_sql)
 
         return u'\n'.join(sql), data

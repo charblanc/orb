@@ -1,9 +1,9 @@
 """ Defines the backend connection class for PostgreSQL databases. """
 
-import datetime
 import logging
 import orb
 import re
+import traceback
 
 from projex.text import nativestring as nstr
 
@@ -58,82 +58,54 @@ class MSSQLConnection(SQLConnection):
         if data is None:
             data = {}
 
-        # check to make sure the connection hasn't been reset or lost
-        cursor = native.cursor()
-
-        # determine if we're executing multiple statements at once
-        commands = [cmd for cmd in command.split(';') if cmd]
-        if len(commands) > 1:
-            commands.insert(0, 'BEGIN TRANSACTION')
-
-        def _gen_sub_value(val):
-            output = []
-            replace = []
-
-            for sub_value in val:
-                if isinstance(sub_value, (list, tuple, set)):
-                    cmd, vals = _gen_sub_value(sub_value)
-                    replace.append(cmd)
-                    output += vals
-                else:
-                    replace.append('?')
-                    output.append(sub_value)
-
-                return '({0})'.format(','.join(replace)), output
-
-        rowcount = 0
-        for cmd in commands:
-            if not cmd.endswith(';'):
-                cmd += ';'
-
+        with native.cursor(as_dict=True) as cursor:
             log.debug('***********************')
-            log.debug(command)
-            log.debug(data)
+            log.debug(command % data)
             log.debug('***********************')
 
             try:
-                cursor.execute(cmd, data)
+                rowcount = 0
+                for cmd in command.split(';'):
+                    cmd = cmd.strip()
+                    if cmd:
+                        cursor.execute(cmd.strip(';') + ';', data)
+                        rowcount += cursor.rowcount
 
-                if cursor.rowcount != -1:
-                    rowcount += cursor.rowcount
+            # look for a disconnection error
+            except pymssql.InterfaceError:
+                raise orb.errors.ConnectionLost()
 
-            # look for a cancelled query
-            except pymssql.OperationalError as err:
-                if err == 'interrupted':
-                    raise orb.errors.Interruption()
-                else:
-                    log.exception('Unkown query error.')
-                    raise orb.errors.QueryFailed(cmd, data, nstr(err))
+            # look for integrity errors
+            except (pymssql.IntegrityError, pymssql.OperationalError) as err:
+                native.rollback()
 
-            # look for duplicate entries
-            except pymssql.IntegrityError as err:
-                duplicate_error = re.search('UNIQUE constraint failed: (.*)', nstr(err))
-                if duplicate_error:
-                    result = duplicate_error.group(1)
-                    msg = '{value} is already being used.'.format(value=result)
-                    raise orb.errors.DuplicateEntryFound(msg)
-                else:
-                    # unknown error
-                    log.exception('Unknown query error.')
-                    raise orb.errors.QueryFailed(command, data, nstr(err))
+                # look for a duplicate error
+                if err[0] == 1062:
+                    raise orb.errors.DuplicateEntryFound(err[1])
 
-            # look for any error
-            except Exception as err:
-                log.exception('Unknown query error.')
-                raise orb.errors.QueryFailed(cmd, data, nstr(err))
+                # look for a reference error
+                reference_error = re.search('Key .* is still referenced from table ".*"', nstr(err))
+                if reference_error:
+                    msg = 'Cannot remove this record, it is still being referenced.'
+                    raise orb.errors.CannotDelete(msg)
 
-        if returning:
+                # unknown error
+                log.debug(traceback.print_exc())
+                raise orb.errors.QueryFailed(command, data, nstr(err))
+
+            # connection has closed underneath the hood
+            except pymssql.Error as err:
+                native.rollback()
+                log.error(traceback.print_exc())
+                raise orb.errors.QueryFailed(command, data, nstr(err))
+
             try:
-                raw_results = cursor.fetchall()
-            except pymssql.OperationalError:
+                raw = cursor.fetchall()
+                results = [mapper(record) for record in raw]
+            except (pymssql.OperationalError, pymssql.ProgrammingError):
                 results = []
-            else:
-                results = [mapper(record) for record in raw_results]
-            rowcount = len(results)  # for some reason, rowcount in mssql3 returns -1 for selects...
-        else:
-            results = []
 
-        return results, rowcount
+            return results, rowcount
 
     def _open(self, db):
         """
@@ -147,8 +119,6 @@ class MSSQLConnection(SQLConnection):
         """
         if not pymssql:
             raise orb.errors.BackendNotFound('pymssql is not installed.')
-
-        dbname = db.name()
 
         try:
             mssql_db = pymssql.connect(
@@ -184,28 +154,40 @@ class MSSQLConnection(SQLConnection):
         tables_sql = """
           SELECT table_name
           FROM information_schema.tables
-          WHERE table_type = 'BASE TABLE' AND table_catalog='dbName'
+          WHERE table_type = 'BASE TABLE' AND table_catalog=%(db)s
         """
-        tables = [x['table_name'] for x in self.execute(tables_sql)[0]]
-        print tables
+
+        col_sql = """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = %(table)s AND table_catalog=%(db)s
+        """
+
+        index_sql = """
+        SELECT constraint_name
+        FROM information_schema.table_constraints
+        WHERE table_name = %(table)s AND table_catalog=%(db)s
+        """
+
+        tables = [x['table_name'] for x in self.execute(tables_sql, {'db': self.database().name()})[0]]
 
         output = {}
         for table in tables:
             if table.endswith('_i18n'):
                 continue
 
-            columns, _ = self.execute("PRAGMA table_info({table});".format(table=table))
-            columns = [c['name'] for c in columns]
+            columns, _ = self.execute(col_sql, {'db': self.database().name(), 'table': table})
+            columns = [c['column_name'] for c in columns]
 
-            indexes, _ = self.execute("PRAGMA index_list({table});".format(table=table))
-            indexes = [i['name'] for i in indexes]
+            indexes, _ = self.execute(index_sql, {'db': self.database().name(), 'table': table})
+            indexes = [i['constraint_name'] for i in indexes]
 
             if (table + '_i18n') in tables:
-                i18n_columns, _ = self.execute("PRAGMA table_info({table}_i18n);".format(table=table))
-                columns += [c['name'] for c in i18n_columns]
+                i18n_columns, _ = self.execute(col_sql, {'db': self.database().name(), 'table': table + '_i18n'})
+                columns += [c['column_name'] for c in i18n_columns]
 
-                i18n_indexes, _ = self.execute("PRAGMA index_list({table}_i18n);".format(table=table))
-                indexes += [i['name'] for i in i18n_indexes]
+                i18n_indexes, _ = self.execute(index_sql, {'db': self.database().name(), 'table': table + '_i18n'})
+                indexes += [i['constraint_name'] for i in i18n_indexes]
 
             output[table] = {
                 'fields': columns,

@@ -80,10 +80,16 @@ class ReferenceColumn(Column):
             return id_column.dbType(connectionType)
         elif connectionType in 'MySQL':
             typ = id_column.dbType(connectionType).replace('AUTO_INCREMENT', '').strip()
-            return '{0} REFERENCES `{1}`.`{2}`'.format(typ, namespace, dbname)
+            if namespace:
+                return '{0} REFERENCES `{1}`.`{2}`'.format(typ, namespace, dbname)
+            else:
+                return '{0} REFERENCES `{1}`'.format(typ, dbname)
         elif connectionType in 'MSSQL':
             typ = id_column.dbType(connectionType).replace('IDENTITY(1,1)', '').strip()
-            return '{0} REFERENCES `{1}`.`{2}`'.format(typ, namespace, dbname)
+            if namespace:
+                return '{0} REFERENCES "{1}"."{2}"'.format(typ, namespace, dbname)
+            else:
+                return '{0} REFERENCES "{1}"'.format(typ, dbname)
         else:
             return ''
 
