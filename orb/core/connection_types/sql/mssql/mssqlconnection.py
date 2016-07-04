@@ -36,7 +36,7 @@ class MSSQLConnection(SQLConnection):
     # PROTECTED METHODS
     # ----------------------------------------------------------------------
     def _closed(self, native):
-        return False
+        return True
 
     def _execute(self,
                  native,
@@ -105,6 +105,7 @@ class MSSQLConnection(SQLConnection):
             except (pymssql.OperationalError, pymssql.ProgrammingError):
                 results = []
 
+            native.close()
             return results, rowcount
 
     def _open(self, db):
